@@ -1,17 +1,28 @@
 # 3D Druck Kostenrechner
 
-Ein benutzerfreundlicher Kostenrechner für 3D-Drucke mit Orca Slicer Integration.
+Ein professioneller Kostenrechner für 3D-Drucke mit Orca Slicer Integration.
 
-## Features
+## Über das Projekt
 
-- Berechnung der Druckkosten basierend auf:
-  - Materialkosten
-  - Stromkosten
-  - Druckzeit
-- Integration mit Orca Slicer
-- Verwaltung mehrerer 3D-Drucker
-- Automatische Updates über GitHub
-- Moderne Benutzeroberfläche
+Der 3D Druck Kostenrechner ist ein leistungsstarkes Tool zur genauen Berechnung von Druckkosten. Er berücksichtigt alle relevanten Faktoren wie Material, Strom und Zeit, um präzise Kostenvorhersagen und Verkaufspreise zu ermitteln.
+
+## Hauptfunktionen
+
+- **Kostenberechnung**
+  - Material- und Stromkosten
+  - Gewinnmargenberechnung
+  - Verkaufspreis pro Stück
+  - Gesamtkostenübersicht
+
+- **Orca Slicer Integration**
+  - Direkter Import von Druckdaten
+  - Automatische Übernahme der Druckzeit
+  - Einfache Materialberechnung
+
+- **Druckerverwaltung**
+  - Mehrere Drucker verwaltbar
+  - Individuelle Stromverbrauchswerte
+  - Anpassbare Druckereinstellungen
 
 ## Installation
 
@@ -19,22 +30,33 @@ Ein benutzerfreundlicher Kostenrechner für 3D-Drucke mit Orca Slicer Integratio
 2. Entpacken Sie die Dateien in einen Ordner Ihrer Wahl
 3. Starten Sie die Anwendung durch Doppelklick auf `3d_print_calculator_gui.py`
 
-## Voraussetzungen
+## System-Voraussetzungen
 
 - Python 3.8 oder höher
 - Tkinter (meist in Python enthalten)
-- Orca Slicer installiert (für Import-Funktionen)
+- Orca Slicer (für Import-Funktionen)
 
-## Verwendung
+## Schnellstart
 
-1. Wählen Sie Ihren 3D-Drucker aus oder fügen Sie einen neuen hinzu
-2. Geben Sie die Materialkosten und das Gewicht ein
-3. Importieren Sie die Druckzeit direkt aus Orca Slicer oder geben Sie sie manuell ein
-4. Der Kostenrechner zeigt Ihnen die detaillierte Aufschlüsselung der Kosten
+1. **Drucker auswählen**
+   - Wählen Sie Ihren 3D-Drucker aus der Liste
+   - Oder fügen Sie einen neuen Drucker hinzu
 
-## Entwicklung
+2. **Daten eingeben**
+   - Druckzeit (manuell oder Import)
+   - Filamentgewicht und -preis
+   - Gewünschte Gewinnmarge
 
-Beiträge zum Projekt sind willkommen! Bitte erstellen Sie einen Pull Request oder melden Sie Probleme über den Issue Tracker.
+3. **Ergebnisse**
+   - Sehen Sie detaillierte Kostenaufschlüsselung
+   - Verkaufspreis pro Stück
+   - Gesamtübersicht mit Gewinn
+
+## Support
+
+Bei Fragen oder Problemen:
+- Erstellen Sie ein [GitHub Issue](https://github.com/patrickdoom/3D-Printing-Calculator/issues)
+- Besuchen Sie unsere [Website](https://chill-zone.xyz)
 
 ## Lizenz
 

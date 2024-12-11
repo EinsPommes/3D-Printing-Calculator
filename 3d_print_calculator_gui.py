@@ -54,7 +54,7 @@ class PrintCalculatorGUI:
         self.setup_styles()
         
         # Version und Copyright
-        self.version = "1.0.0"
+        self.version = "1.0.1"
         self.copyright = " 2024 chill-zone.xyz"
         self.github_url = "https://github.com/EinsPommes/3D-Printing-Calculator"
         
@@ -249,14 +249,16 @@ class PrintCalculatorGUI:
         input_frame.pack(fill='x', padx=10, pady=10)
         
         fields = [
-            ("Druckzeit (h)", ""),
-            ("Filament Gewicht (g)", ""),
-            ("Stromkosten (€/kWh)", ""),
-            ("Filament Kosten (€/kg)", ""),
-            ("Gewinnmarge (%)", "")
+            ("Druckzeit (h)", "0"),
+            ("Filament Gewicht (g)", "0"),
+            ("Strompreis (€/kWh)", "0.40"),
+            ("Filament Preis (€/kg)", "20"),
+            ("Stückzahl", "1"),
+            ("Gewinnmarge (%)", "20")  # Neue Gewinnmarge
         ]
         
-        for i, (text, _) in enumerate(fields):
+        self.cost_entries = {}
+        for i, (text, default) in enumerate(fields):
             frame = ttk.Frame(input_frame, style='Card.TFrame')
             frame.pack(fill='x', pady=(0, 5) if i < len(fields)-1 else 0)
             
@@ -264,10 +266,12 @@ class PrintCalculatorGUI:
                      text=text,
                      style='Card.TLabel').pack(side='left')
             
-            entry = ttk.Entry(frame, width=15)
+            entry = ttk.Entry(frame, width=15, justify='right')
             entry.pack(side='right')
+            entry.insert(0, default)
             self.cost_entries[text] = entry
         
+        # Berechnen Button
         button_frame = ttk.Frame(costs_frame, style='Card.TFrame')
         button_frame.pack(fill='x', padx=10, pady=(0, 10))
         
@@ -291,11 +295,13 @@ class PrintCalculatorGUI:
         results_content = ttk.Frame(results_frame, style='Card.TFrame')
         results_content.pack(fill='x', padx=10, pady=10)
         
+        self.result_labels = {}
         results = [
-            ("Materialkosten", ""),
             ("Stromkosten", ""),
+            ("Filamentkosten", ""),
             ("Gesamtkosten", ""),
-            ("Endpreis", "")
+            ("Kosten pro Stück", ""),
+            ("Endrechnung", "")  # Neue Ergebnisanzeige
         ]
         
         for text, _ in results:
@@ -447,68 +453,118 @@ class PrintCalculatorGUI:
                 self.printer_var.set('')
 
     def import_from_orca(self):
+        """Importiert Daten aus der letzten OrcaSlicer G-Code-Datei"""
         try:
-            # Hole den konfigurierten Pfad
+            # Status zurücksetzen
+            self.orca_status.configure(text="🔄 Suche nach OrcaSlicer Dateien...")
+            self.root.update()
+
+            # Mögliche OrcaSlicer Pfade
             orca_path = self.orca_path.get()
-            
             possible_paths = [
                 os.path.expanduser("~/AppData/Roaming/OrcaSlicer"),
                 "C:/Program Files/OrcaSlicer",
                 "C:/Program Files (x86)/OrcaSlicer",
                 "D:/Program Files/OrcaSlicer",
+                os.path.expanduser("~/Downloads")  # Auch im Downloads-Ordner suchen
             ]
             
+            # Wenn ein Pfad konfiguriert ist, diesen zuerst prüfen
             if orca_path and os.path.exists(orca_path):
                 possible_paths.insert(0, orca_path)
             
+            # Debug: Zeige Suchpfade
+            print("Suche in folgenden Pfaden:")
+            for path in possible_paths:
+                print(f"- {path}")
+            
+            # Suche nach der neuesten G-Code-Datei
             gcode_file = None
+            newest_time = 0
+            
             for base_path in possible_paths:
                 if os.path.exists(base_path):
-                    for subdir in ['temp', 'cache', 'output']:
-                        search_path = os.path.join(base_path, subdir)
-                        if os.path.exists(search_path):
-                            gcode_files = glob.glob(os.path.join(search_path, '*.gcode'))
-                            if gcode_files:
-                                gcode_file = max(gcode_files, key=os.path.getmtime)
-                                break
-                    if gcode_file:
-                        break
+                    print(f"\nDurchsuche {base_path}:")
+                    # Suche rekursiv in allen Unterordnern
+                    for root, dirs, files in os.walk(base_path):
+                        gcode_files = [f for f in files if f.endswith('.gcode')]
+                        if gcode_files:
+                            print(f"  Gefunden in {root}:")
+                            for file in gcode_files:
+                                file_path = os.path.join(root, file)
+                                file_time = os.path.getmtime(file_path)
+                                print(f"  - {file} (Zeit: {file_time})")
+                                if file_time > newest_time:
+                                    newest_time = file_time
+                                    gcode_file = file_path
             
             if not gcode_file:
                 self.orca_status.configure(
-                    text="⚠️ Keine Orca Dateien gefunden")
+                    text="⚠️ Keine OrcaSlicer G-Code-Dateien gefunden")
                 return
 
+            print(f"\nVerwende Datei: {gcode_file}")
+            
+            # Lese die G-Code-Datei
             with open(gcode_file, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             
+            # Debug: Zeige die ersten 500 Zeichen
+            print("\nDatei-Inhalt (Anfang):")
+            print(content[:500])
+            
+            # Extrahiere Informationen mit regulären Ausdrücken
             import re
-            time_match = re.search(
-                r'estimated printing time = .*?(\d+)h\s*(\d+)m', 
-                content, 
-                re.IGNORECASE
-            )
+            
+            # Druckzeit
+            time_patterns = [
+                r'estimated printing time = .*?(\d+)h\s*(\d+)m',
+                r'; estimated printing time \(normal mode\) = (\d+)h (\d+)m',
+                r'; total estimated printing time = (\d+)h (\d+)m'
+            ]
+            
+            time_match = None
+            for pattern in time_patterns:
+                time_match = re.search(pattern, content, re.IGNORECASE)
+                if time_match:
+                    break
+            
             if time_match:
                 hours = float(time_match.group(1))
                 minutes = float(time_match.group(2))
                 total_hours = hours + (minutes / 60)
                 self.cost_entries["Druckzeit (h)"].delete(0, tk.END)
                 self.cost_entries["Druckzeit (h)"].insert(0, f"{total_hours:.2f}")
+                print(f"\nGefundene Druckzeit: {hours}h {minutes}m")
             
-            filament_match = re.search(
-                r'filament used = (\d+\.?\d*)g', 
-                content, 
-                re.IGNORECASE
-            )
-            if filament_match:
-                weight = float(filament_match.group(1))
+            # Filamentgewicht
+            weight_patterns = [
+                r'filament used = (\d+\.?\d*)g',
+                r'; filament used \[g\] = (\d+\.?\d*)',
+                r'; total filament used \[g\] = (\d+\.?\d*)'
+            ]
+            
+            weight_match = None
+            for pattern in weight_patterns:
+                weight_match = re.search(pattern, content, re.IGNORECASE)
+                if weight_match:
+                    break
+            
+            if weight_match:
+                weight = float(weight_match.group(1))
                 self.cost_entries["Filament Gewicht (g)"].delete(0, tk.END)
                 self.cost_entries["Filament Gewicht (g)"].insert(0, f"{weight:.1f}")
+                print(f"Gefundenes Gewicht: {weight}g")
             
+            # Zeige Erfolg an
             self.orca_status.configure(
                 text=f"✓ Erfolgreich importiert aus {os.path.basename(gcode_file)}")
             
+            # Berechne die Kosten neu
+            self.calculate_costs()
+            
         except Exception as e:
+            print(f"Fehler beim Import: {str(e)}")
             self.orca_status.configure(
                 text=f"⚠️ Fehler: {str(e)}")
 
@@ -533,71 +589,96 @@ class PrintCalculatorGUI:
             messagebox.showerror("Fehler", f"Fehler beim Speichern der Konfiguration: {str(e)}")
 
     def calculate_costs(self):
+        """Berechnet die Kosten basierend auf den Eingaben"""
         try:
+            # Hole die Eingabewerte
+            print_time = float(self.cost_entries["Druckzeit (h)"].get() or 0)
+            filament_weight = float(self.cost_entries["Filament Gewicht (g)"].get() or 0)
+            filament_price = float(self.cost_entries["Filament Preis (€/kg)"].get() or 0)
+            power_price = float(self.cost_entries["Strompreis (€/kWh)"].get() or 0)
+            quantity = int(self.cost_entries["Stückzahl"].get() or 1)
+            profit_margin = float(self.cost_entries["Gewinnmarge (%)"].get() or 0)
+            
+            # Hole den Stromverbrauch des ausgewählten Druckers
             printer_display = self.printer_var.get()
             if not printer_display:
-                messagebox.showerror("Fehler", "Bitte wählen Sie einen Drucker aus!")
+                print("Kein Drucker ausgewählt")
                 return
-            
+                
             printer_name = self.get_printer_name_from_display(printer_display)
             printer = self.get_printer_by_name(printer_name)
-            
             if not printer:
-                messagebox.showerror("Fehler", "Drucker nicht gefunden!")
+                print("Drucker nicht gefunden")
                 return
+                
+            power_consumption = printer.power_consumption
             
-            try:
-                print_time = float(self.cost_entries["Druckzeit (h)"].get())
-                filament_weight = float(self.cost_entries["Filament Gewicht (g)"].get())
-                filament_cost = float(self.cost_entries["Filament Kosten (€/kg)"].get())
-                power_cost = float(self.cost_entries["Stromkosten (€/kWh)"].get())
-                profit_margin = float(self.cost_entries["Gewinnmarge (%)"].get())
-            except ValueError:
-                messagebox.showerror("Fehler", 
-                                   "Bitte geben Sie gültige Zahlen ein!")
-                return
+            # 1. Stromkosten berechnen
+            # Gesamte kWh = (Watt / 1000) * Stunden
+            total_kwh = (power_consumption / 1000) * print_time
+            # Stromkosten = kWh * Preis pro kWh
+            total_power_cost = total_kwh * power_price
             
-            if print_time <= 0:
-                messagebox.showerror("Fehler", 
-                                   "Die Druckzeit muss größer als 0 sein!")
-                return
+            # 2. Filamentkosten berechnen
+            # Filamentgewicht ist bereits das Gesamtgewicht
+            # Umrechnung von g in kg und Multiplikation mit Preis pro kg
+            total_filament_cost = (filament_weight / 1000) * filament_price
             
-            if filament_weight <= 0:
-                messagebox.showerror("Fehler", 
-                                   "Das Filament Gewicht muss größer als 0 sein!")
-                return
+            # 3. Basiskosten berechnen
+            total_base_cost = total_power_cost + total_filament_cost
             
-            if profit_margin < 0:
-                messagebox.showerror("Fehler", 
-                                   "Die Gewinnmarge darf nicht negativ sein!")
-                return
+            # 4. Kosten pro Stück
+            base_cost_per_piece = total_base_cost / quantity
             
-            power_consumption_kwh = printer.power_consumption * print_time / 1000
-            power_costs = power_consumption_kwh * power_cost
+            # 5. Gewinn berechnen
+            profit_per_piece = base_cost_per_piece * (profit_margin / 100)
+            total_profit = profit_per_piece * quantity
             
-            filament_costs = (filament_weight * filament_cost) / 1000
+            # 6. Verkaufspreis berechnen
+            price_per_piece = base_cost_per_piece + profit_per_piece
+            total_price = price_per_piece * quantity
             
-            # Berechne die Kosten
-            material_costs = filament_costs
-            electricity_costs = power_costs
-            total_costs = material_costs + electricity_costs
+            # 7. Endrechnung berechnen
+            total_final = total_base_cost + total_profit
             
-            # Berechne den Endpreis mit Gewinnmarge
-            profit = total_costs * (profit_margin / 100)
-            final_price = total_costs + profit
+            # Debug-Ausgaben
+            print(f"\nBerechnungsdetails:")
+            print(f"1. Stromkosten:")
+            print(f"   - Verbrauch: {power_consumption}W")
+            print(f"   - Zeit: {print_time}h")
+            print(f"   - kWh: {total_kwh:.4f}")
+            print(f"   - Kosten: {total_power_cost:.4f}€")
             
-            # Formatiere die Ausgabe
-            def update_label(label, value):
-                label.config(text=f"{value:.2f} €")
+            print(f"\n2. Filamentkosten:")
+            print(f"   - Gewicht: {filament_weight}g")
+            print(f"   - Preis/kg: {filament_price}€")
+            print(f"   - Kosten: {total_filament_cost:.4f}€")
             
-            # Aktualisiere die Ergebnisse
-            update_label(self.result_labels["Materialkosten"], material_costs)
-            update_label(self.result_labels["Stromkosten"], electricity_costs)
-            update_label(self.result_labels["Gesamtkosten"], total_costs)
-            update_label(self.result_labels["Endpreis"], final_price)
+            print(f"\n3. Gesamtkosten:")
+            print(f"   - Basis gesamt: {total_base_cost:.4f}€")
+            print(f"   - Pro Stück: {base_cost_per_piece:.4f}€")
+            print(f"   - Gewinn/Stück: {profit_per_piece:.4f}€")
+            print(f"   - Verkauf/Stück: {price_per_piece:.4f}€")
             
+            print(f"\n4. Endrechnung:")
+            print(f"   - Gesamtkosten: {total_base_cost:.4f}€")
+            print(f"   - Gewinn: {total_profit:.4f}€")
+            print(f"   - Endpreis: {total_final:.4f}€")
+            
+            # Aktualisiere die Ergebnisanzeigen
+            self.result_labels["Stromkosten"].configure(text=f"{total_power_cost:.2f} €")
+            self.result_labels["Filamentkosten"].configure(text=f"{total_filament_cost:.2f} €")
+            self.result_labels["Gesamtkosten"].configure(
+                text=f"{total_base_cost:.2f} € (+ {total_profit:.2f} € Gewinn)")
+            self.result_labels["Kosten pro Stück"].configure(
+                text=f"{base_cost_per_piece:.2f} € (VK: {price_per_piece:.2f} €)")
+            self.result_labels["Endrechnung"].configure(
+                text=f"Gesamt: {total_final:.2f} € (inkl. Gewinn)")
+            
+        except ValueError as e:
+            print(f"Fehler bei der Berechnung: {str(e)}")
         except Exception as e:
-            messagebox.showerror("Unerwarteter Fehler", f"Ein Fehler ist aufgetreten: {str(e)}")
+            print(f"Unerwarteter Fehler: {str(e)}")
 
     def browse_orca_path(self):
         path = filedialog.askdirectory(
